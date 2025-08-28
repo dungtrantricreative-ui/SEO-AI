@@ -93,9 +93,7 @@ def generate_seo_from_video():
     user_prompt = request.form.get('prompt', '')
 
     try:
-        # --- ĐÃ THAY ĐỔI THEO YÊU CẦU CỦA BẠN ---
-        model = genai.GenerativeModel(model_name="gemini-2.5-flash")
-        # --- KẾT THÚC THAY ĐỔI ---
+        model = genai.GenerativeModel(model_name="gemini-1.5-flash-latest")
         
         prompt = user_prompt if user_prompt else """
             Bạn là một chuyên gia SEO YouTube. Phân tích video này và tạo ra:
@@ -105,8 +103,17 @@ def generate_seo_from_video():
             Trả về kết quả dưới dạng một đối tượng JSON.
         """
 
+        # --- PHẦN THAY ĐỔI ĐỂ SỬA LỖI ---
+        # Đóng gói video vào đúng định dạng dictionary mà thư viện yêu cầu
+        video_data = {
+            'mime_type': video_file.mimetype,
+            'data': video_file.read()
+        }
+        # --- KẾT THÚC PHẦN THAY ĐỔI ---
+
         print("Sending video and prompt to the model...")
-        response = model.generate_content([video_file, prompt])
+        # Gửi dictionary video_data thay vì đối tượng file cũ
+        response = model.generate_content([video_data, prompt])
         
         clean_response_text = response.text.replace('```json', '').replace('```', '').strip()
         return jsonify(json.loads(clean_response_text))
