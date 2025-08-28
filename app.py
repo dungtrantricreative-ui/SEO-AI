@@ -15,7 +15,7 @@ try:
 except Exception as e:
     print(f"Lỗi cấu hình Gemini: {e}")
 
-# --- PHẦN GIAO DIỆN WEB ĐƯỢC NÂNG CẤP ---
+# Giao diện web đã nâng cấp
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="vi">
@@ -40,6 +40,7 @@ HTML_TEMPLATE = """
         ul li { background: #f9f9f9; padding: 10px; border-radius: 5px; margin-bottom: 8px; }
         .tags-container { display: flex; flex-wrap: wrap; gap: 8px; }
         .tag { background: #e0e0e0; padding: 5px 12px; border-radius: 15px; font-size: 14px; }
+        textarea.readonly-box { width: 100%; box-sizing: border-box; background-color: #f9f9f9; border: 1px solid #eee; }
     </style>
 </head>
 <body>
@@ -98,35 +99,36 @@ HTML_TEMPLATE = """
             // Tiêu đề
             let titlesHtml = '<ul>';
             if (data.suggested_titles && Array.isArray(data.suggested_titles)) {
-                data.suggested_titles.forEach(title => {
-                    titlesHtml += `<li>${title}</li>`;
-                });
+                data.suggested_titles.forEach(title => { titlesHtml += `<li>${title}</li>`; });
             }
             titlesHtml += '</ul>';
 
-            // Mô tả
-            const descriptionHtml = `<textarea rows="10" style="width: 100%;" readonly>${data.description || ''}</textarea>`;
+            // Mô tả đầy đủ (kết hợp description, chapters, hashtags)
+            let fullDescription = data.description || '';
+            let chaptersText = '';
+            if (data.chapters && Array.isArray(data.chapters) && data.chapters.length > 0) {
+                chaptersText = data.chapters.join('\\n');
+                fullDescription += '\\n\\n--- NỘI DUNG CHÍNH ---\\n' + chaptersText;
+            }
+            if (data.hashtags && Array.isArray(data.hashtags)) {
+                fullDescription += '\\n\\n' + data.hashtags.join(' ');
+            }
             
             // Thẻ Tags
             let tagsHtml = '<div class="tags-container">';
             if (data.tags && Array.isArray(data.tags)) {
-                data.tags.forEach(tag => {
-                    tagsHtml += `<span class="tag">${tag}</span>`;
-                });
+                data.tags.forEach(tag => { tagsHtml += `<span class="tag">${tag}</span>`; });
             }
             tagsHtml += '</div>';
 
             resultCard.innerHTML = `
+                <div class="result-section"><h3>💡 Tiêu đề gợi ý</h3>${titlesHtml}</div>
                 <div class="result-section">
-                    <h3>💡 Tiêu đề gợi ý</h3>
-                    ${titlesHtml}
+                    <h3>📝 Mô tả đầy đủ <button class="copy-btn" onclick="copyToClipboard('full-description-text')">Copy</button></h3>
+                    <textarea id="full-description-text" rows="15" class="readonly-box" readonly>${fullDescription.replace(/\\n/g, '\\n')}</textarea>
                 </div>
                 <div class="result-section">
-                    <h3>📝 Mô tả chi tiết <button class="copy-btn" onclick="copyToClipboard('description-text')">Copy</button></h3>
-                    <textarea id="description-text" rows="10" style="width: 100%; box-sizing: border-box;" readonly>${data.description || ''}</textarea>
-                </div>
-                <div class="result-section">
-                    <h3>🏷️ Thẻ Tags <button class="copy-btn" onclick="copyToClipboard('tags-text', true)">Copy</button></h3>
+                    <h3>🏷️ Thẻ Tags (Từ khóa) <button class="copy-btn" onclick="copyToClipboard('tags-text', true)">Copy</button></h3>
                     ${tagsHtml}
                     <textarea id="tags-text" style="display:none;">${(data.tags || []).join(', ')}</textarea>
                 </div>
@@ -137,16 +139,14 @@ HTML_TEMPLATE = """
             const textToCopy = document.getElementById(elementId).value;
             navigator.clipboard.writeText(textToCopy).then(() => {
                 alert(isTags ? 'Đã copy các tags!' : 'Đã copy mô tả!');
-            }).catch(err => {
-                console.error('Lỗi khi copy: ', err);
-            });
+            }).catch(err => { console.error('Lỗi khi copy: ', err); });
         }
     </script>
 </body>
 </html>
 """
 
-# --- PHẦN BACKEND (KHÔNG THAY ĐỔI) ---
+# --- PHẦN BACKEND ĐƯỢC CẬP NHẬT ---
 @app.route('/')
 def index():
     return render_template_string(HTML_TEMPLATE)
@@ -162,19 +162,21 @@ def generate_seo_from_video():
     try:
         model = genai.GenerativeModel(model_name="gemini-2.5-flash")
         
+        # --- CÂU LỆNH ẨN ĐÃ ĐƯỢC NÂNG CẤP ---
         prompt = user_prompt if user_prompt else """
-            Bạn là một chuyên gia SEO YouTube. Phân tích video này và tạo ra:
-            1.  **suggested_titles**: 5 gợi ý tiêu đề hấp dẫn (dưới 70 ký tự).
-            2.  **description**: Một đoạn mô tả chi tiết (tối thiểu 250 từ).
-            3.  **tags**: Một danh sách 15 thẻ tags liên quan.
-            Trả về kết quả dưới dạng một đối tượng JSON.
+            Bạn là một chuyên gia SEO YouTube. Phân tích kỹ lưỡng video này và tạo ra một đối tượng JSON với các key sau:
+            1.  "suggested_titles": 5 gợi ý tiêu đề hấp dẫn (dưới 70 ký tự).
+            2.  "description": Một đoạn mô tả chi tiết (tối thiểu 250 từ). Trong mô tả, hãy tự động chèn thêm một phần mẫu ở cuối cùng có dạng "[--- KÊNH LIÊN HỆ CỦA BẠN ---]" để người dùng tự điền thông tin mạng xã hội.
+            3.  "chapters": Dựa vào các phần chính của video, hãy tạo ra các mốc thời gian (timestamps) theo định dạng "phút:giây - Tên chương". Bắt đầu bằng "00:00 - Giới thiệu".
+            4.  "hashtags": Gợi ý 3-5 hashtag dạng "#Hashtag" súc tích, liên quan nhất đến nội dung video để đặt ở cuối mô tả.
+            5.  "tags": Một danh sách 15 thẻ tags (từ khóa) để đưa vào phần tags của YouTube.
         """
 
         video_data = {
             'mime_type': video_file.mimetype,
             'data': video_file.read()
         }
-
+        
         safety_settings = {
             HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
             HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
@@ -200,3 +202,4 @@ def generate_seo_from_video():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
+
