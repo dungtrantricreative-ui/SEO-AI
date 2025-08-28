@@ -93,7 +93,7 @@ def generate_seo_from_video():
     user_prompt = request.form.get('prompt', '')
 
     try:
-        model = genai.GenerativeModel(model_name="gemini-1.5-flash-latest")
+        model = genai.GenerativeModel(model_name="gemini-2.5-flash")
         
         prompt = user_prompt if user_prompt else """
             Bạn là một chuyên gia SEO YouTube. Phân tích video này và tạo ra:
