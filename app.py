@@ -1,6 +1,7 @@
 import os
 import json
 import google.generativeai as genai
+from google.generativeai.types import HarmCategory, HarmBlockThreshold
 from flask import Flask, request, jsonify, render_template_string
 from dotenv import load_dotenv
 
@@ -14,7 +15,7 @@ try:
 except Exception as e:
     print(f"Lỗi cấu hình Gemini: {e}")
 
-# Giao diện web đơn giản (không thay đổi)
+# --- PHẦN GIAO DIỆN WEB ĐƯỢC NÂNG CẤP ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="vi">
@@ -23,24 +24,38 @@ HTML_TEMPLATE = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SEO YouTube Bá Đạo</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f9; }
-        h1 { color: #d90000; }
-        #upload-form { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        input[type="file"], textarea { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; }
-        button { background-color: #ff0000; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; }
-        #loading, #result { margin-top: 20px; }
-        pre { background: #eee; padding: 15px; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f9; color: #333; }
+        .container { max-width: 800px; margin: auto; }
+        h1 { color: #d90000; text-align: center; }
+        .form-card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        input[type="file"], textarea { display: block; width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; }
+        button { background-color: #ff0000; color: white; padding: 12px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; font-size: 16px; transition: background-color 0.2s; }
+        button:hover { background-color: #c00000; }
+        #loading { text-align: center; margin-top: 20px; font-weight: bold; display: none; }
+        .result-card { background: white; margin-top: 30px; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: none; }
+        .result-section { margin-bottom: 25px; }
+        .result-section h3 { border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 15px; }
+        .copy-btn { float: right; background: #eee; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; }
+        ul { list-style: none; padding-left: 0; }
+        ul li { background: #f9f9f9; padding: 10px; border-radius: 5px; margin-bottom: 8px; }
+        .tags-container { display: flex; flex-wrap: wrap; gap: 8px; }
+        .tag { background: #e0e0e0; padding: 5px 12px; border-radius: 15px; font-size: 14px; }
     </style>
 </head>
 <body>
-    <h1>Tải Video Lên Để Tối Ưu SEO</h1>
-    <form id="upload-form">
-        <input type="file" id="video-file" name="video" accept="video/*" required>
-        <textarea id="prompt" name="prompt" placeholder="Yêu cầu tùy chỉnh (bỏ trống để AI tự động)..."></textarea>
-        <button type="submit">Tạo SEO ngay!</button>
-    </form>
-    <div id="loading" style="display:none;">Đang xử lý, vui lòng chờ...</div>
-    <div id="result"></div>
+    <div class="container">
+        <h1>🚀 SEO YouTube Bá Đạo 🚀</h1>
+        <div class="form-card">
+            <form id="upload-form">
+                <input type="file" id="video-file" name="video" accept="video/*" required>
+                <textarea id="prompt" name="prompt" rows="3" placeholder="Yêu cầu tùy chỉnh (bỏ trống để AI tự động)..."></textarea>
+                <button type="submit">Tạo SEO ngay!</button>
+            </form>
+        </div>
+        <div id="loading">Đang xử lý, vui lòng chờ...</div>
+        <div id="result-card" class="result-card">
+            </div>
+    </div>
 
     <script>
         document.getElementById('upload-form').addEventListener('submit', async function(e) {
@@ -48,38 +63,90 @@ HTML_TEMPLATE = """
             const videoFile = document.getElementById('video-file').files[0];
             const userPrompt = document.getElementById('prompt').value;
             const loadingDiv = document.getElementById('loading');
-            const resultDiv = document.getElementById('result');
-            if (!videoFile) {
-                resultDiv.innerHTML = "<p>Vui lòng chọn một video.</p>";
-                return;
-            }
+            const resultCard = document.getElementById('result-card');
+
+            if (!videoFile) { alert("Vui lòng chọn một video."); return; }
+
             loadingDiv.style.display = 'block';
-            resultDiv.innerHTML = '';
+            resultCard.style.display = 'none';
+            resultCard.innerHTML = '';
+
             const formData = new FormData();
             formData.append('video', videoFile);
             formData.append('prompt', userPrompt);
+
             try {
-                const response = await fetch('/generate_seo', {
-                    method: 'POST',
-                    body: formData
-                });
+                const response = await fetch('/generate_seo', { method: 'POST', body: formData });
                 const data = await response.json();
+
                 if (data.error) {
-                    resultDiv.innerHTML = `<p><strong>Lỗi:</strong> ${data.error}</p>`;
+                    resultCard.innerHTML = `<p><strong>Lỗi:</strong> ${data.error}</p>`;
                 } else {
-                    resultDiv.innerHTML = `<h2>Kết quả SEO:</h2><pre>${JSON.stringify(data, null, 2)}</pre>`;
+                    displayResults(data);
                 }
             } catch (error) {
-                resultDiv.innerHTML = `<p><strong>Lỗi kết nối:</strong> ${error.message}</p>`;
+                resultCard.innerHTML = `<p><strong>Lỗi kết nối:</strong> ${error.message}</p>`;
             } finally {
                 loadingDiv.style.display = 'none';
+                resultCard.style.display = 'block';
             }
         });
+
+        function displayResults(data) {
+            const resultCard = document.getElementById('result-card');
+            
+            // Tiêu đề
+            let titlesHtml = '<ul>';
+            if (data.suggested_titles && Array.isArray(data.suggested_titles)) {
+                data.suggested_titles.forEach(title => {
+                    titlesHtml += `<li>${title}</li>`;
+                });
+            }
+            titlesHtml += '</ul>';
+
+            // Mô tả
+            const descriptionHtml = `<textarea rows="10" style="width: 100%;" readonly>${data.description || ''}</textarea>`;
+            
+            // Thẻ Tags
+            let tagsHtml = '<div class="tags-container">';
+            if (data.tags && Array.isArray(data.tags)) {
+                data.tags.forEach(tag => {
+                    tagsHtml += `<span class="tag">${tag}</span>`;
+                });
+            }
+            tagsHtml += '</div>';
+
+            resultCard.innerHTML = `
+                <div class="result-section">
+                    <h3>💡 Tiêu đề gợi ý</h3>
+                    ${titlesHtml}
+                </div>
+                <div class="result-section">
+                    <h3>📝 Mô tả chi tiết <button class="copy-btn" onclick="copyToClipboard('description-text')">Copy</button></h3>
+                    <textarea id="description-text" rows="10" style="width: 100%; box-sizing: border-box;" readonly>${data.description || ''}</textarea>
+                </div>
+                <div class="result-section">
+                    <h3>🏷️ Thẻ Tags <button class="copy-btn" onclick="copyToClipboard('tags-text', true)">Copy</button></h3>
+                    ${tagsHtml}
+                    <textarea id="tags-text" style="display:none;">${(data.tags || []).join(', ')}</textarea>
+                </div>
+            `;
+        }
+
+        function copyToClipboard(elementId, isTags = false) {
+            const textToCopy = document.getElementById(elementId).value;
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                alert(isTags ? 'Đã copy các tags!' : 'Đã copy mô tả!');
+            }).catch(err => {
+                console.error('Lỗi khi copy: ', err);
+            });
+        }
     </script>
 </body>
 </html>
 """
 
+# --- PHẦN BACKEND (KHÔNG THAY ĐỔI) ---
 @app.route('/')
 def index():
     return render_template_string(HTML_TEMPLATE)
@@ -103,19 +170,29 @@ def generate_seo_from_video():
             Trả về kết quả dưới dạng một đối tượng JSON.
         """
 
-        # --- PHẦN THAY ĐỔI ĐỂ SỬA LỖI ---
-        # Đóng gói video vào đúng định dạng dictionary mà thư viện yêu cầu
         video_data = {
             'mime_type': video_file.mimetype,
             'data': video_file.read()
         }
-        # --- KẾT THÚC PHẦN THAY ĐỔI ---
 
-        print("Sending video and prompt to the model...")
-        # Gửi dictionary video_data thay vì đối tượng file cũ
-        response = model.generate_content([video_data, prompt])
+        safety_settings = {
+            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+        }
+
+        print("Sending video and prompt to the model with safety settings off...")
+        response = model.generate_content(
+            [video_data, prompt],
+            safety_settings=safety_settings
+        )
         
         clean_response_text = response.text.replace('```json', '').replace('```', '').strip()
+        
+        if not clean_response_text:
+            return jsonify({"error": "AI returned an empty response. The safety filter might have been triggered."}), 500
+            
         return jsonify(json.loads(clean_response_text))
 
     except Exception as e:
