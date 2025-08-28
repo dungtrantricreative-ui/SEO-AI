@@ -14,7 +14,7 @@ try:
 except Exception as e:
     print(f"Lỗi cấu hình Gemini: {e}")
 
-# Giao diện web đơn giản
+# Giao diện web đơn giản (không thay đổi)
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="vi">
@@ -45,32 +45,25 @@ HTML_TEMPLATE = """
     <script>
         document.getElementById('upload-form').addEventListener('submit', async function(e) {
             e.preventDefault();
-            
             const videoFile = document.getElementById('video-file').files[0];
             const userPrompt = document.getElementById('prompt').value;
             const loadingDiv = document.getElementById('loading');
             const resultDiv = document.getElementById('result');
-
             if (!videoFile) {
                 resultDiv.innerHTML = "<p>Vui lòng chọn một video.</p>";
                 return;
             }
-
             loadingDiv.style.display = 'block';
             resultDiv.innerHTML = '';
-
             const formData = new FormData();
             formData.append('video', videoFile);
             formData.append('prompt', userPrompt);
-
             try {
                 const response = await fetch('/generate_seo', {
                     method: 'POST',
                     body: formData
                 });
-                
                 const data = await response.json();
-
                 if (data.error) {
                     resultDiv.innerHTML = `<p><strong>Lỗi:</strong> ${data.error}</p>`;
                 } else {
@@ -100,15 +93,10 @@ def generate_seo_from_video():
     user_prompt = request.form.get('prompt', '')
 
     try:
-        print("Uploading video...")
-        video_file_uploaded = genai.upload_file(file=video_file)
+        # --- ĐÃ THAY ĐỔI THEO YÊU CẦU CỦA BẠN ---
+        model = genai.GenerativeModel(model_name="gemini-2.5-flash")
+        # --- KẾT THÚC THAY ĐỔI ---
         
-        while video_file_uploaded.state.name == "PROCESSING":
-            video_file_uploaded = genai.get_file(video_file_uploaded.name)
-       
-        if video_file_uploaded.state.name == "FAILED":
-            return jsonify({"error": "Video processing failed"}), 500
-
         prompt = user_prompt if user_prompt else """
             Bạn là một chuyên gia SEO YouTube. Phân tích video này và tạo ra:
             1.  **suggested_titles**: 5 gợi ý tiêu đề hấp dẫn (dưới 70 ký tự).
@@ -116,13 +104,9 @@ def generate_seo_from_video():
             3.  **tags**: Một danh sách 15 thẻ tags liên quan.
             Trả về kết quả dưới dạng một đối tượng JSON.
         """
-       
-        model = genai.GenerativeModel(model_name="gemini-2.5-flash")
-        print("Making LLM call...")
-        response = model.generate_content([prompt, video_file_uploaded])
-        
-        genai.delete_file(video_file_uploaded.name)
-        print(f"Deleted file {video_file_uploaded.name}")
+
+        print("Sending video and prompt to the model...")
+        response = model.generate_content([video_file, prompt])
         
         clean_response_text = response.text.replace('```json', '').replace('```', '').strip()
         return jsonify(json.loads(clean_response_text))
