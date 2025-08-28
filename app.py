@@ -117,7 +117,7 @@ def generate_seo_from_video():
             Trả về kết quả dưới dạng một đối tượng JSON.
         """
        
-        model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+        model = genai.GenerativeModel(model_name="gemini-2.5-flash")
         print("Making LLM call...")
         response = model.generate_content([prompt, video_file_uploaded])
         
